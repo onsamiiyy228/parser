@@ -271,9 +271,11 @@ async def process_message(client, message: Message, chat_title: str, source: str
             or "Unknown"
         )
         sender_id = sender.id if sender else 0
+        sender_username = getattr(sender, "username", None)
     except Exception:
         sender_name = "Unknown"
         sender_id = 0
+        sender_username = None
 
     try:
         chat = await message.get_chat()
@@ -305,7 +307,7 @@ async def process_message(client, message: Message, chat_title: str, source: str
     forward_text = (
         f"🎯 <b>Потенциальный клиент!</b> {label}\n\n"
         f"📨 Чат: <b>{chat_title}</b>\n"
-        f"👤 Автор: {sender_name}\n"
+        f"👤 Автор: {sender_name}{f' @{sender_username}' if sender_username else ''}\n"
         f"🔑 Ключевые слова: {keywords_str}\n"
         f"📅 {message.date.strftime('%d.%m.%Y %H:%M')}\n\n"
         f"💬 <i>{text[:1000]}</i>"
