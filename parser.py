@@ -5,21 +5,22 @@ import sqlite3
 import random
 import os
 import base64
-
-session_data = os.getenv("SESSION_BASE64")
-if session_data:
-    with open("parser.session", "wb") as f:
-        f.write(base64.b64decode(session_data))
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from telethon import TelegramClient, events
 from telethon.tl.types import Message
 from telethon.errors import FloodWaitError, ChatWriteForbiddenError
 
+# ==================== СЕССИЯ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ ====================
+session_data = os.getenv("SESSION_BASE64")
+if session_data:
+    with open("parser.session", "wb") as f:
+        f.write(base64.b64decode(session_data))
+
 # ==================== НАСТРОЙКИ ====================
-API_ID = 2040           # Получить на my.telegram.org
-API_HASH = "b18441a1ff607e10a989891a5462e627"  # Получить на my.telegram.org
-SESSION_NAME = "parser"     # Или путь к файлу сессии
+API_ID   = int(os.getenv("API_ID", "12345678"))
+API_HASH = os.getenv("API_HASH", "your_api_hash")
+SESSION_NAME = "parser"
 
 # Чаты для мониторинга
 CHATS_TO_MONITOR = [
@@ -73,18 +74,18 @@ KEYWORDS = [
 ]
 
 # Куда пересылать
-FORWARD_TO_CHAT = "me"  # "me" = себе в избранное
+FORWARD_TO_CHAT = "me"
 
 # За сколько часов парсить историю при старте
-HISTORY_HOURS = 3  # снизили с 6 до 3 — меньше нагрузка при первом запуске
+HISTORY_HOURS = 3
 
 # Файл кэша
 CACHE_FILE = "chats_cache.json"
 
-# Задержки (секунды) — человечный темп, рандом важен
-DELAY_BETWEEN_FORWARDS = (8, 15)     # между пересылками
-DELAY_BETWEEN_CHATS    = (3, 7)      # между чатами при парсинге истории
-DELAY_BETWEEN_MESSAGES = (0.4, 1.0)  # между сообщениями внутри чата
+# Задержки (секунды)
+DELAY_BETWEEN_FORWARDS = (8, 15)
+DELAY_BETWEEN_CHATS    = (3, 7)
+DELAY_BETWEEN_MESSAGES = (0.4, 1.0)
 # ====================================================
 
 
@@ -105,11 +106,10 @@ _db_conn: sqlite3.Connection | None = None
 
 
 def get_db() -> sqlite3.Connection:
-    """Единственное соединение с БД на весь процесс."""
     global _db_conn
     if _db_conn is None:
         _db_conn = sqlite3.connect("messages.db", check_same_thread=False)
-        _db_conn.execute("PRAGMA journal_mode=WAL")  # быстрее при параллельных записях
+        _db_conn.execute("PRAGMA journal_mode=WAL")
         _db_conn.row_factory = sqlite3.Row
     return _db_conn
 
@@ -144,7 +144,6 @@ def is_already_saved(message_id: int, chat_id: int) -> bool:
 
 
 def save_message(msg_data: dict) -> bool:
-    """Возвращает True если сохранено впервые, False если уже было."""
     if is_already_saved(msg_data["message_id"], msg_data["chat_id"]):
         return False
     conn = get_db()
@@ -221,7 +220,6 @@ async def resolve_chat(client, chat, cache):
 
 
 async def resolve_all_chats(client) -> list:
-    """Резолвим последовательно с паузами — не параллельно."""
     cache = load_cache()
     log.info(f"🔄 Резолвим {len(CHATS_TO_MONITOR)} чатов...")
     entities = []
@@ -238,7 +236,6 @@ async def resolve_all_chats(client) -> list:
 # ==================== ОТПРАВКА ====================
 
 async def safe_send(client, text: str, retries: int = 3) -> bool:
-    """Отправка с обработкой FloodWait и экспоненциальными ретраями."""
     for attempt in range(retries):
         try:
             await client.send_message(FORWARD_TO_CHAT, text, parse_mode="html")
@@ -304,7 +301,7 @@ async def process_message(client, message: Message, chat_title: str, source: str
 
     is_new = save_message(msg_data)
     if not is_new:
-        return  # уже обрабатывали — пропускаем
+        return
 
     icon = "🕐" if source == "history" else "🔴"
     log.info(f"{icon} [{chat_title}] {sender_name}: {found_keywords}")
@@ -320,7 +317,6 @@ async def process_message(client, message: Message, chat_title: str, source: str
         f"💬 <i>{text[:1000]}</i>"
     )
 
-    # Рандомная пауза перед отправкой — имитирует человека
     await asyncio.sleep(random.uniform(*DELAY_BETWEEN_FORWARDS))
 
     sent = await safe_send(client, forward_text)
@@ -347,7 +343,7 @@ async def parse_history(client, entities: list):
                     msg_date = msg_date.replace(tzinfo=timezone.utc)
 
                 if msg_date < since:
-                    break  # дошли до старых — стоп
+                    break
 
                 count += 1
                 if message.text:
@@ -365,7 +361,6 @@ async def parse_history(client, entities: list):
         log.info(f"📜 [{chat_title}] — проверено {count} сообщений")
         total_checked += count
 
-        # Пауза между чатами
         await asyncio.sleep(random.uniform(*DELAY_BETWEEN_CHATS))
 
     log.info(f"✅ История готова — проверено {total_checked} сообщений")
@@ -383,12 +378,12 @@ async def main():
         request_retries=5,
         connection_retries=5,
         retry_delay=2,
-        flood_sleep_threshold=60,  # автоматически ждём если флуд < 60с
+        flood_sleep_threshold=60,
     )
 
     await client.connect()
-if not await client.is_user_authorized():
-    raise RuntimeError("Сессия не авторизована!")
+    if not await client.is_user_authorized():
+        raise RuntimeError("Сессия не авторизована! Проверь переменную SESSION_BASE64")
     log.info("🚀 Клиент запущен")
 
     chat_entities = await resolve_all_chats(client)
@@ -397,10 +392,8 @@ if not await client.is_user_authorized():
         log.error("❌ Не удалось подключиться ни к одному чату!")
         return
 
-    # Сначала парсим историю
     await parse_history(client, chat_entities)
 
-    # Потом слушаем новые сообщения
     log.info("👂 Переключаюсь в режим реального времени...")
 
     @client.on(events.NewMessage(chats=chat_entities))
