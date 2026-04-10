@@ -11,13 +11,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import Message
 from telethon.errors import FloodWaitError, ChatWriteForbiddenError
 
-# ==================== СЕССИЯ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ ====================
-session_data = os.getenv("SESSION_BASE64")
-if session_data:
-    with open("parser.session", "wb") as f:
-        f.write(base64.b64decode(session_data))
 
-# ==================== НАСТРОЙКИ ====================
 API_ID   = int(os.getenv("API_ID", "12345678"))
 API_HASH = os.getenv("API_HASH", "your_api_hash")
 SESSION_NAME = "parser"
