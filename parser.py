@@ -3,6 +3,13 @@ import logging
 import json
 import sqlite3
 import random
+import os
+import base64
+
+session_data = os.getenv("SESSION_BASE64")
+if session_data:
+    with open("parser.session", "wb") as f:
+        f.write(base64.b64decode(session_data))
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from telethon import TelegramClient, events
@@ -379,7 +386,9 @@ async def main():
         flood_sleep_threshold=60,  # автоматически ждём если флуд < 60с
     )
 
-    await client.start()
+    await client.connect()
+if not await client.is_user_authorized():
+    raise RuntimeError("Сессия не авторизована!")
     log.info("🚀 Клиент запущен")
 
     chat_entities = await resolve_all_chats(client)
