@@ -1,0 +1,6 @@
+parser.session
+*.session
+messages.db
+parser.log
+chats_cache.json
+__pycache__/
